@@ -93,8 +93,12 @@ myargs_to_short(struct myargs options[])
     {
         len+= snprintf(&shortargs[len], max-len, "%c", 
                 options[i].shortname);
-        if(options[i].type != MYARGS_NONE && options[i].type != MYARGS_FLAG)
-            len+= snprintf(&shortargs[len], max-len, ":");
+        if(options[i].type != MYARGS_NONE) {
+            if(options[i].type == MYARGS_FLAG)
+                len+= snprintf(&shortargs[len], max-len, "::");
+            else
+                len+= snprintf(&shortargs[len], max-len, ":");
+        }
     }
     shortargs[len]=0;
     return shortargs;
