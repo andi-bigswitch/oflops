@@ -57,6 +57,9 @@ AC_PROG_DOXYGEN
 
 # Checks for header files.
 AC_CHECK_HEADERS([config.h net/bpf.h])
+# Checks for header files that are critical to compile.
+AC_CHECK_HEADER([pcap.h], [], AC_MSG_ERROR("could not find libpcap header"))
+AC_CHECK_HEADER([libconfig.h], [], AC_MSG_ERROR("could not find libconfig header"))
 
 # Check for the SNMP headers
 AC_CHECK_HEADERS([net-snmp/net-snmp-config.h], [],
@@ -97,6 +100,9 @@ AC_EGREP_HEADER(OFPT_FLOW_EXPIRED, [$OPENFLOWSRC/include/openflow/openflow.h],
 				,[1])
 			])
 	])
+
+AC_CHECK_LIB([pcap], [pcap_close], [], AC_MSG_ERROR("could not link with libpcap"))
+AC_CHECK_LIB([config], [config_init], [], AC_MSG_ERROR("could not link with libconfig"))
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
