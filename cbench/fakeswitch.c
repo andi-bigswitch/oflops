@@ -51,14 +51,13 @@ static inline uint64_t ntohll(uint64_t n)
     return htonl(1) == 1 ? n : ((uint64_t) ntohl(n) << 32) | ntohl(n >> 32);
 }
 
-void fakeswitch_init(struct fakeswitch *fs, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac)
+void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac)
 {
-    static int ID =1 ;
     char buf[BUFLEN];
     struct ofp_header ofph;
     fs->sock = sock;
     fs->debug = debug;
-    fs->id = ID++;
+    fs->id = dpid;
     fs->inbuf = msgbuf_new(bufsize);
     fs->outbuf = msgbuf_new(bufsize);
     fs->probe_state = 0;
@@ -480,7 +479,7 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
     char buf[BUFLEN];
     int count ;
     int send_count = 0 ;
-    int throughput_buffer = 65536;
+    int throughput_buffer = BUFLEN;
     int i;
     if( fs->switch_status == READY_TO_SEND) 
     {
