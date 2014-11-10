@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <sys/epoll.h>
 
 #include <net/ethernet.h>
 
@@ -51,14 +52,13 @@ static inline uint64_t ntohll(uint64_t n)
     return htonl(1) == 1 ? n : ((uint64_t) ntohl(n) << 32) | ntohl(n >> 32);
 }
 
-void fakeswitch_init(struct fakeswitch *fs, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac)
+void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac)
 {
-    static int ID =1 ;
     char buf[BUFLEN];
     struct ofp_header ofph;
     fs->sock = sock;
     fs->debug = debug;
-    fs->id = ID++;
+    fs->id = dpid;
     fs->inbuf = msgbuf_new(bufsize);
     fs->outbuf = msgbuf_new(bufsize);
     fs->probe_state = 0;
@@ -145,8 +145,6 @@ void fakeswitch_learn_dstmac(struct fakeswitch *fs)
 void fakeswitch_set_pollfd(struct fakeswitch *fs, struct pollfd *pfd)
 {
     pfd->events = POLLIN|POLLOUT;
-    /* if(msgbuf_count_buffered(fs->outbuf) > 0)
-        pfd->events |= POLLOUT; */
     pfd->fd = fs->sock;
 }
 
@@ -480,7 +478,7 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
     char buf[BUFLEN];
     int count ;
     int send_count = 0 ;
-    int throughput_buffer = 65536;
+    int throughput_buffer = BUFLEN;
     int i;
     if( fs->switch_status == READY_TO_SEND) 
     {
@@ -521,12 +519,13 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
         msgbuf_write(fs->outbuf, fs->sock, 0);
 }
 /***********************************************************************/
-void fakeswitch_handle_io(struct fakeswitch *fs, const struct pollfd *pfd)
+void fakeswitch_handle_io(struct fakeswitch *fs, int events)
 {
-    if(pfd->revents & POLLIN)
+    if(events & EPOLLIN) {
         fakeswitch_handle_read(fs);
-    if(pfd->revents & POLLOUT)
+    } else if(events & EPOLLOUT) {
         fakeswitch_handle_write(fs);
+    }
 }
 /************************************************************************/
 static int debug_msg(struct fakeswitch * fs, char * msg, ...)
@@ -539,6 +538,5 @@ static int debug_msg(struct fakeswitch * fs, char * msg, ...)
     vfprintf(stderr,msg,aq);
     if(msg[strlen(msg)-1] != '\n')
         fprintf(stderr, "\n");
-    // fflush(stderr);     // should be redundant, but often isn't :-(
     return 1;
 }

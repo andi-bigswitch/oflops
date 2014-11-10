@@ -10,6 +10,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/epoll.h>
 
 #include <netinet/tcp.h>
 
@@ -26,6 +27,9 @@
 
 
 
+#define MAX_EVENTS	16
+struct epoll_event events[MAX_EVENTS];
+int epollfd;
 
 struct myargs my_options[] = {
     {"controller",  'c', "hostname of controller to connect to", MYARGS_STRING, {.string = "localhost"}},
@@ -44,6 +48,7 @@ struct myargs my_options[] = {
     {"connect-delay",  'i', "delay between groups of switches connecting to the controller (in ms)", MYARGS_INTEGER, {.integer = 0}},
     {"connect-group-size",  'I', "number of switches in a connection delay group", MYARGS_INTEGER, {.integer = 1}},
     {"learn-dst-macs",  'L', "send gratuitious ARP replies to learn destination macs before testing", MYARGS_FLAG, {.flag = 1}},
+    {"dpid-offset",  'o', "switch DPID offset", MYARGS_INTEGER, {.integer = 1}},
     {0, 0, 0, 0}
 };
 
@@ -69,17 +74,20 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         timersub(&now, &then, &diff);
         if( (1000* diff.tv_sec  + (float)diff.tv_usec/1000)> total_wait)
             break;
-        for(i = 0; i< n_fakeswitches; i++)
-            fakeswitch_set_pollfd(&fakeswitches[i], &pollfds[i]);
 
-        poll(pollfds, n_fakeswitches, 1000);      // block until something is ready or 100ms passes
+	for(i = 0; i < MAX_EVENTS; i++) {
+		events[i].events = EPOLLIN | EPOLLOUT;
+	}
+	
+	int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
 
-        for(i = 0; i< n_fakeswitches; i++)
-            fakeswitch_handle_io(&fakeswitches[i], &pollfds[i]);
+	for(i = 0; i < nfds; i++) {
+            fakeswitch_handle_io(events[i].data.ptr, events[i].events);
+	}
     }
     tNow = now.tv_sec;
     tmNow = localtime(&tNow);
-    printf("%02d:%02d:%02d.%03d %-3d switches: fmods/sec:  ", tmNow->tm_hour, tmNow->tm_min, tmNow->tm_sec, (int)(now.tv_usec/1000), n_fakeswitches);
+    printf("%02d:%02d:%02d.%03d %-3d switches: flows/sec:  ", tmNow->tm_hour, tmNow->tm_min, tmNow->tm_sec, (int)(now.tv_usec/1000), n_fakeswitches);
     usleep(100000); // sleep for 100 ms, to let packets queue
     for( i = 0 ; i < n_fakeswitches; i++)
     {
@@ -139,8 +147,15 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 		freeaddrinfo(res);
 		return -1;
 	}
-	FD_ZERO(&fds);
-	FD_SET(fd, &fds);
+	
+    	struct epoll_event ev;
+    	int epollfd = epoll_create(1);
+	ev.events = EPOLLIN | EPOLLOUT | EPOLLERR;
+	ev.data.fd = fd;
+	if(epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev) == -1) {
+		printf("Cannot use epoll to create connection\n");
+		return -1;
+	}
 
 	if(mstimeout >= 0) 
 	{
@@ -158,18 +173,16 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 				return -1;
 			}
 		}
-		ret = select(fd+1, NULL, &fds, NULL, &tv);
+		int nfds = epoll_wait(epollfd, &ev, 1, mstimeout);
 	}
 	freeaddrinfo(res);
-
-	if(ret != 1) 
-	{
-		if(ret == 0)
-			return -1;
-		else
-			return ret;
+	close(epollfd);
+	
+	if(ev.events & EPOLLERR) {
+		return -1;
+	} else {
+		return 0;
 	}
-	return 0;
 }
 
 /********************************************************************************/
@@ -254,6 +267,7 @@ int main(int argc, char * argv[])
     int     connect_delay = myargs_get_default_integer(my_options, "connect-delay");
     int     connect_group_size = myargs_get_default_integer(my_options, "connect-group-size");
     int     learn_dst_macs = myargs_get_default_flag(my_options, "learn-dst-macs");
+    int     dpid_offset = myargs_get_default_integer(my_options, "dpid-offset");
     int     mode = MODE_LATENCY;
     int     i,j;
 
@@ -321,6 +335,9 @@ int main(int argc, char * argv[])
             case 'I':
                 connect_group_size = atoi(optarg);
                 break;
+            case 'o':
+                dpid_offset = atoi(optarg);
+                break;
             default: 
                 myargs_usage(my_options, PROG_TITLE, "help message", NULL, 1);
         }
@@ -334,7 +351,7 @@ int main(int argc, char * argv[])
     fprintf(stderr, "cbench: controller benchmarking tool\n"
                 "   running in mode %s\n"
                 "   connecting to controller at %s:%d \n"
-                "   faking%s %d switches :: %d tests each; %d ms per test\n"
+                "   faking%s %d switches offset %d :: %d tests each; %d ms per test\n"
                 "   with %d unique source MACs per switch\n"
                 "   %s destination mac addresses before the test\n"
                 "   starting test with %d ms delay after features_reply\n"
@@ -346,6 +363,7 @@ int main(int argc, char * argv[])
                 controller_port,
                 should_test_range ? " from 1 to": "",
                 n_fakeswitches,
+                dpid_offset,
                 tests_per_loop,
                 mstestlen,
                 total_mac_addresses,
@@ -363,6 +381,13 @@ int main(int argc, char * argv[])
     double  max = 0.0;
     double  v;
     results = malloc(tests_per_loop * sizeof(double));
+
+    struct epoll_event ev;
+    epollfd = epoll_create(4096);
+    if(epollfd == -1) {
+    	fprintf(stderr, "Cannot create epollfd.\n");
+	exit(1);
+    }
 
     for( i = 0; i < n_fakeswitches; i++)
     {
@@ -382,10 +407,17 @@ int main(int argc, char * argv[])
         if(debug)
             fprintf(stderr,"Initializing switch %d ... ", i+1);
         fflush(stderr);
-        fakeswitch_init(&fakeswitches[i],sock,65536, debug, delay, mode, total_mac_addresses, learn_dst_macs);
+        fakeswitch_init(&fakeswitches[i],dpid_offset+i,sock,BUFLEN, debug, delay, mode, total_mac_addresses, learn_dst_macs);
         if(debug)
             fprintf(stderr," :: done.\n");
         fflush(stderr);
+	ev.events = EPOLLIN | EPOLLOUT;
+	ev.data.fd = sock;
+	ev.data.ptr = &fakeswitches[i];
+	if(epoll_ctl(epollfd, EPOLL_CTL_ADD, sock, &ev) == -1) {
+		fprintf(stderr, "Cannot add sock to epoll\n");
+		exit(1);
+	}
         if(count_bits(i+1) == 0)  // only test for 1,2,4,8,16 switches
             continue;
         if(!should_test_range && ((i+1) != n_fakeswitches)) // only if testing range or this is last
