@@ -18,14 +18,11 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-
 #include <openflow/openflow.h>
 
 #include "myargs.h"
 #include "cbench.h"
 #include "fakeswitch.h"
-
-
 
 #define MAX_EVENTS	16
 struct epoll_event events[MAX_EVENTS];
@@ -75,15 +72,16 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         if( (1000* diff.tv_sec  + (float)diff.tv_usec/1000)> total_wait)
             break;
 
-	for(i = 0; i < MAX_EVENTS; i++) {
-		events[i].events = EPOLLIN | EPOLLOUT;
-	}
-	
-	int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+        for(i = 0; i < MAX_EVENTS; i++) {
+            events[i].events = EPOLLIN | EPOLLOUT;
+        }
+        
+        int nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
 
-	for(i = 0; i < nfds; i++) {
+
+        for(i = 0; i < nfds; i++) {
             fakeswitch_handle_io(events[i].data.ptr, events[i].events);
-	}
+        }
     }
     tNow = now.tv_sec;
     tmNow = localtime(&tNow);
@@ -148,40 +146,40 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 		return -1;
 	}
 	
-    	struct epoll_event ev;
-    	int epollfd = epoll_create(1);
-	ev.events = EPOLLIN | EPOLLOUT | EPOLLERR;
+    struct epoll_event ev;
+    int epollfd = epoll_create(1);
+    ev.events = EPOLLIN | EPOLLOUT | EPOLLERR;
 	ev.data.fd = fd;
 	if(epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev) == -1) {
-		printf("Cannot use epoll to create connection\n");
-		return -1;
+	    printf("Cannot use epoll to create connection\n");
+	    return -1;
 	}
 
 	if(mstimeout >= 0) 
 	{
-		tv.tv_sec = mstimeout / 1000;
-		tv.tv_usec = (mstimeout % 1000) * 1000;
+	    tv.tv_sec = mstimeout / 1000;
+	    tv.tv_usec = (mstimeout % 1000) * 1000;
 
-		errno = 0;
+	    errno = 0;
 
-		if(connect(fd, res->ai_addr, res->ai_addrlen) < 0) 
-		{
-			if((errno != EWOULDBLOCK) && (errno != EINPROGRESS))
-			{
-				fprintf(stderr, "timeout_connect: error connecting: %d\n", errno);
-				freeaddrinfo(res);
-				return -1;
-			}
-		}
-		int nfds = epoll_wait(epollfd, &ev, 1, mstimeout);
+	    if(connect(fd, res->ai_addr, res->ai_addrlen) < 0) 
+	    {
+		    if((errno != EWOULDBLOCK) && (errno != EINPROGRESS))
+		    {
+			    fprintf(stderr, "timeout_connect: error connecting: %d\n", errno);
+			    freeaddrinfo(res);
+			    return -1;
+		    }
+        }
+	    int nfds = epoll_wait(epollfd, &ev, 1, mstimeout);
 	}
-	freeaddrinfo(res);
-	close(epollfd);
+    freeaddrinfo(res);
+    close(epollfd);
 	
-	if(ev.events & EPOLLERR) {
-		return -1;
-	} else {
-		return 0;
+    if(ev.events & EPOLLERR) {
+	    return -1;
+    } else {
+	    return 0;
 	}
 }
 
@@ -411,13 +409,15 @@ int main(int argc, char * argv[])
         if(debug)
             fprintf(stderr," :: done.\n");
         fflush(stderr);
-	ev.events = EPOLLIN | EPOLLOUT;
-	ev.data.fd = sock;
-	ev.data.ptr = &fakeswitches[i];
-	if(epoll_ctl(epollfd, EPOLL_CTL_ADD, sock, &ev) == -1) {
-		fprintf(stderr, "Cannot add sock to epoll\n");
-		exit(1);
-	}
+	    ev.events = EPOLLIN | EPOLLOUT;
+	    ev.data.fd = sock;
+	    ev.data.ptr = &fakeswitches[i];
+
+	    if(epoll_ctl(epollfd, EPOLL_CTL_ADD, sock, &ev) == -1) {
+	    	fprintf(stderr, "Cannot add sock to epoll\n");
+	    	exit(1);
+    	}
+
         if(count_bits(i+1) == 0)  // only test for 1,2,4,8,16 switches
             continue;
         if(!should_test_range && ((i+1) != n_fakeswitches)) // only if testing range or this is last
