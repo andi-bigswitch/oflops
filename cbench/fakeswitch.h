@@ -53,7 +53,7 @@ struct fakeswitch
  * @param total_mac_addresses      The total number of unique mac addresses
  *                                 to use for packet ins from this switch
  */
-void fakeswitch_init(struct fakeswitch *fs, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac);
+void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac);
 
 
 /*** Set the desired flags for poll()
@@ -72,7 +72,7 @@ void fakeswitch_set_pollfd(struct fakeswitch *fs, struct pollfd *pfd);
  * @param fs    Pointer to initalized fakeswitch
  * @param pfd   Pointer to an allocated poll structure
  */
-void fakeswitch_handle_io(struct fakeswitch *fs, const struct pollfd *pfd);
+void fakeswitch_handle_io(struct fakeswitch *fs, int events);
 
 /**** Get and reset count 
  * @param fs    Pointer to initialized fakeswitch
