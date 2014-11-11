@@ -10,7 +10,6 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/epoll.h>
 
 #include <netinet/tcp.h>
 
@@ -24,9 +23,12 @@
 #include "cbench.h"
 #include "fakeswitch.h"
 
+#ifdef linux
+#include <sys/epoll.h>
 #define MAX_EVENTS	16
 struct epoll_event events[MAX_EVENTS];
 int epollfd;
+#endif
 
 struct myargs my_options[] = {
     {"controller",  'c', "hostname of controller to connect to", MYARGS_STRING, {.string = "localhost"}},
@@ -72,6 +74,7 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         if( (1000* diff.tv_sec  + (float)diff.tv_usec/1000)> total_wait)
             break;
 
+        #ifdef linux
         for(i = 0; i < MAX_EVENTS; i++) {
             events[i].events = EPOLLIN | EPOLLOUT;
         }
@@ -82,6 +85,15 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         for(i = 0; i < nfds; i++) {
             fakeswitch_handle_io(events[i].data.ptr, events[i].events);
         }
+        #else
+        for(i = 0; i < n_fakeswitches; i++) 
+            fakeswitch_set_pollfd(&fakeswitches[i], &pollfds[i]);
+        
+        poll(pollfds, n_fakeswitches, 1000);
+
+        for(i = 0; i < n_fakeswitches; i++) 
+            fakeswitch_handle_io(&fakeswitches[i], &pollfds[i]);
+        #endif
     }
     tNow = now.tv_sec;
     tmNow = localtime(&tNow);
@@ -146,6 +158,7 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 		return -1;
 	}
 	
+    #ifdef linux
     struct epoll_event ev;
     int epollfd = epoll_create(1);
     ev.events = EPOLLIN | EPOLLOUT | EPOLLERR;
@@ -154,6 +167,10 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 	    printf("Cannot use epoll to create connection\n");
 	    return -1;
 	}
+    #else
+    FD_ZERO(&fds);
+    FD_SET(fd, &fds);
+    #endif
 
 	if(mstimeout >= 0) 
 	{
@@ -171,9 +188,15 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 			    return -1;
 		    }
         }
+        #ifdef linux
 	    int nfds = epoll_wait(epollfd, &ev, 1, mstimeout);
+        #else
+        ret = select(fd + 1, NULL, &fds, NULL, &tv);
+        #endif
 	}
     freeaddrinfo(res);
+
+    #ifdef linux
     close(epollfd);
 	
     if(ev.events & EPOLLERR) {
@@ -181,6 +204,16 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
     } else {
 	    return 0;
 	}
+    #else
+    if(ret != 1) 
+    {
+            if(ret == 0)
+                return -1;
+            else
+                return ret;
+    }
+    return 0;
+    #endif
 }
 
 /********************************************************************************/
@@ -380,12 +413,14 @@ int main(int argc, char * argv[])
     double  v;
     results = malloc(tests_per_loop * sizeof(double));
 
+    #ifdef linux
     struct epoll_event ev;
     epollfd = epoll_create(4096);
     if(epollfd == -1) {
     	fprintf(stderr, "Cannot create epollfd.\n");
-	exit(1);
+	    exit(1);
     }
+    #endif
 
     for( i = 0; i < n_fakeswitches; i++)
     {
@@ -405,10 +440,17 @@ int main(int argc, char * argv[])
         if(debug)
             fprintf(stderr,"Initializing switch %d ... ", i+1);
         fflush(stderr);
+        #ifdef linux
         fakeswitch_init(&fakeswitches[i],dpid_offset+i,sock,BUFLEN, debug, delay, mode, total_mac_addresses, learn_dst_macs);
+        #else
+        fakeswitch_init(&fakeswitches[i], sock, 65536, debug, delay, mode, total_mac_addresses, learn_dst_macs);
+        #endif
+
         if(debug)
             fprintf(stderr," :: done.\n");
         fflush(stderr);
+    
+        #ifdef linux
 	    ev.events = EPOLLIN | EPOLLOUT;
 	    ev.data.fd = sock;
 	    ev.data.ptr = &fakeswitches[i];
@@ -417,6 +459,7 @@ int main(int argc, char * argv[])
 	    	fprintf(stderr, "Cannot add sock to epoll\n");
 	    	exit(1);
     	}
+        #endif
 
         if(count_bits(i+1) == 0)  // only test for 1,2,4,8,16 switches
             continue;

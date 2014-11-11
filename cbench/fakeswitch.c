@@ -10,7 +10,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/epoll.h>
 
 #include <net/ethernet.h>
 
@@ -19,6 +18,10 @@
 #include "config.h"
 #include "cbench.h"
 #include "fakeswitch.h"
+
+#ifdef linux
+#include <sys/epoll.h>
+#endif
 
 static int debug_msg(struct fakeswitch * fs, char * msg, ...);
 static int make_features_reply(int switch_id, int xid, char * buf, int buflen);
@@ -52,6 +55,7 @@ static inline uint64_t ntohll(uint64_t n)
     return htonl(1) == 1 ? n : ((uint64_t) ntohl(n) << 32) | ntohl(n >> 32);
 }
 
+#ifdef linux
 void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac)
 {
     char buf[BUFLEN];
@@ -82,8 +86,39 @@ void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int
     msgbuf_push(fs->outbuf,(char * ) &ofph, sizeof(ofph));
     debug_msg(fs, " sent hello");
 }
+#else
+void fakeswitch_init(struct fakeswitch *fs, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac)
+{
+    static int ID =1 ;
+    char buf[BUFLEN];
+    struct ofp_header ofph;
+    fs->sock = sock;
+    fs->debug = debug;
+    fs->id = ID++;
+    fs->inbuf = msgbuf_new(bufsize);
+    fs->outbuf = msgbuf_new(bufsize);
+    fs->probe_state = 0;
+    fs->mode = mode;
+    fs->probe_size = make_packet_in(fs->id, 0, 0, buf, BUFLEN, fs->current_mac_address++);
+    fs->count = 0;
+    fs->switch_status = START;
+    fs->delay = delay;
+    fs->total_mac_addresses = total_mac_addresses;
+    fs->current_mac_address = 0;
+    fs->xid = 1;
+    fs->learn_dstmac = learn_dstmac;
+    fs->current_buffer_id = 1;
+  
+    ofph.version = OFP_VERSION;
+    ofph.type = OFPT_HELLO;
+    ofph.length = htons(sizeof(ofph));
+    ofph.xid   = htonl(1);
 
-/***********************************************************************/
+    // Send HELLO
+    msgbuf_push(fs->outbuf,(char * ) &ofph, sizeof(ofph));
+    debug_msg(fs, " sent hello");
+}
+#endif
 
 void fakeswitch_learn_dstmac(struct fakeswitch *fs)
 {
@@ -519,6 +554,7 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
         msgbuf_write(fs->outbuf, fs->sock, 0);
 }
 /***********************************************************************/
+#ifdef linux
 void fakeswitch_handle_io(struct fakeswitch *fs, int events)
 {
     if(events & EPOLLIN) {
@@ -527,6 +563,15 @@ void fakeswitch_handle_io(struct fakeswitch *fs, int events)
         fakeswitch_handle_write(fs);
     }
 }
+#else
+void switch_handle_io(struct fakeswitch *fs, const struct pollfd *pfd)
+{
+    if(pfd->revents & POLLIN)
+        fakeswitch_handle_read(fs);
+    if(pfd->revents & POLLOUT)
+        fakeswitch_handle_write(fs);
+}
+#endif
 /************************************************************************/
 static int debug_msg(struct fakeswitch * fs, char * msg, ...)
 {
