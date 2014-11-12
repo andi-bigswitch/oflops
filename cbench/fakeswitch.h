@@ -53,11 +53,7 @@ struct fakeswitch
  * @param total_mac_addresses      The total number of unique mac addresses
  *                                 to use for packet ins from this switch
  */
-#ifdef linux
 void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac);
-#else
-void fakeswitch_init(struct fakeswitch *fs, int sock, int bufsize, int debug, int delay, enum test_mode mode, int total_mac_addresses, int learn_dstmac);
-#endif
 
 /*** Set the desired flags for poll()
  * @param fs    Pointer to initalized fakeswitch
@@ -73,13 +69,9 @@ void fakeswitch_set_pollfd(struct fakeswitch *fs, struct pollfd *pfd);
  *      if it's a flow_mod, then incremenet count
  *      else ignore it
  * @param fs    Pointer to initalized fakeswitch
- * @param pfd   Pointer to an allocated poll structure
+ * @param pfd   Pointer to an allocated poll structure or the number of events as int
  */
-#ifdef linux
-void fakeswitch_handle_io(struct fakeswitch *fs, int events);
-#else
-void fakeswitch_handle_io(struct fakeswitch *fs, const struct pollfd *pfd);
-#endif
+void fakeswitch_handle_io(struct fakeswitch *fs, void* pfd_events);
 /**** Get and reset count 
  * @param fs    Pointer to initialized fakeswitch
  * @return      Number of flow_mod responses since last call
