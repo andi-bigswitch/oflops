@@ -23,7 +23,7 @@
 #include "cbench.h"
 #include "fakeswitch.h"
 
-#ifdef __linux__
+#ifdef USE_EPOLL
 #include <sys/epoll.h>
 #define MAX_EVENTS	16
 struct epoll_event events[MAX_EVENTS];
@@ -74,7 +74,7 @@ double run_test(int n_fakeswitches, struct fakeswitch * fakeswitches, int mstest
         if( (1000* diff.tv_sec  + (float)diff.tv_usec/1000)> total_wait)
             break;
 
-        #ifdef __linux__
+        #ifdef USE_EPOLL
         for(i = 0; i < MAX_EVENTS; i++) {
             events[i].events = EPOLLIN | EPOLLOUT;
         }
@@ -158,7 +158,7 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 		return -1;
 	}
 	
-    #ifdef __linux__
+    #ifdef USE_EPOLL
     struct epoll_event ev;
     int epollfd = epoll_create(1);
     ev.events = EPOLLIN | EPOLLOUT | EPOLLERR;
@@ -188,7 +188,7 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 			    return -1;
 		    }
         }
-        #ifdef __linux__
+        #ifdef USE_EPOLL
 	    int nfds = epoll_wait(epollfd, &ev, 1, mstimeout);
         #else
         ret = select(fd + 1, NULL, &fds, NULL, &tv);
@@ -196,7 +196,7 @@ int timeout_connect(int fd, const char * hostname, int port, int mstimeout) {
 	}
     freeaddrinfo(res);
 
-    #ifdef __linux__
+    #ifdef USE_EPOLL
     close(epollfd);
 	
     if(ev.events & EPOLLERR) {
@@ -413,7 +413,7 @@ int main(int argc, char * argv[])
     double  v;
     results = malloc(tests_per_loop * sizeof(double));
 
-    #ifdef __linux__
+    #ifdef USE_EPOLL
     struct epoll_event ev;
     epollfd = epoll_create(4096);
     if(epollfd == -1) {
@@ -440,17 +440,17 @@ int main(int argc, char * argv[])
         if(debug)
             fprintf(stderr,"Initializing switch %d ... ", i+1);
         fflush(stderr);
-        #ifdef __linux__
+        #ifdef USE_EPOLL
         fakeswitch_init(&fakeswitches[i],dpid_offset+i,sock,BUFLEN, debug, delay, mode, total_mac_addresses, learn_dst_macs);
         #else
-        fakeswitch_init(&fakeswitches[i], sock, 65536, debug, delay, mode, total_mac_addresses, learn_dst_macs);
+        fakeswitch_init(&fakeswitches[i], 0, sock, 65536, debug, delay, mode, total_mac_addresses, learn_dst_macs);
         #endif
 
         if(debug)
             fprintf(stderr," :: done.\n");
         fflush(stderr);
     
-        #ifdef __linux__
+        #ifdef USE_EPOLL
 	    ev.events = EPOLLIN | EPOLLOUT;
 	    ev.data.fd = sock;
 	    ev.data.ptr = &fakeswitches[i];

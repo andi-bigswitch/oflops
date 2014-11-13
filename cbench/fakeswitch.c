@@ -19,7 +19,7 @@
 #include "cbench.h"
 #include "fakeswitch.h"
 
-#ifdef __linux__
+#ifdef USE_EPOLL
 #include <sys/epoll.h>
 #endif
 
@@ -61,7 +61,7 @@ void fakeswitch_init(struct fakeswitch *fs, int dpid, int sock, int bufsize, int
     struct ofp_header ofph;
     fs->sock = sock;
     fs->debug = debug;
-    #ifdef __linux__
+    #ifdef USE_EPOLL
     fs->id = dpid;
     #else
     static int ID = 1;
@@ -527,7 +527,7 @@ static void fakeswitch_handle_write(struct fakeswitch *fs)
 /***********************************************************************/
 void fakeswitch_handle_io(struct fakeswitch *fs, void *pfd_events)
 {
-    #ifdef __linux__
+    #ifdef USE_EPOLL
     int events = *((int*) pfd_events);
     if(events & EPOLLIN) {
         fakeswitch_handle_read(fs);
