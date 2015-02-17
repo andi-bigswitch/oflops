@@ -1,0 +1,32 @@
+**/.deps/
+**/.libs/
+autom4te.cache/
+
+# Editor
+*.sw?
+
+# Configure
+Makefile
+Makefile.in
+configure
+config.*
+doc/doxygen.conf
+
+# Build
+*.o
+*.l[oa]
+tags
+
+/aclocal.m4
+/compile
+/depcomp
+/install-sh
+/libtool
+/missing
+/oflops
+/stamp-h1
+/ltmain.sh
+
+
+# Target
+/cbench/cbench
