@@ -68,7 +68,7 @@ add_time(struct timeval *now, time_t secs,  suseconds_t usecs) {
   }
 }
 
-inline int
+extern int
 time_diff(struct timeval *now, struct timeval *then) {
   return (then->tv_sec - now->tv_sec)*1000000 + (then->tv_usec - now->tv_usec);
 }
