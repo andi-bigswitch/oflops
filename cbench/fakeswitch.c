@@ -432,8 +432,14 @@ void fakeswitch_handle_read(struct fakeswitch *fs)
                 fs->probe_state=0;
                 break;
             case OFPT_HELLO:
-                debug_msg(fs, "got hello");
-                // we already sent our own HELLO; don't respond
+            	// when switch goes into idle state, controller sents hello and expects
+            	// hello response, so we will sent it here
+                debug_msg(fs, "got hello, sent hello");
+		echo.version= OFP_VERSION;
+                echo.length = htons(sizeof(echo));
+    		echo.type   = OFPT_HELLO;
+		echo.xid = ofph->xid;
+    		msgbuf_push(fs->outbuf,(char * ) &echo, sizeof(echo));
                 break;
             case OFPT_ECHO_REQUEST:
                 debug_msg(fs, "got echo, sent echo_resp");
